@@ -42,7 +42,13 @@ var UICOLORS = {
 	frameStrokeUnSelected : 'black'
 }
 
-function ViewController(frameCount, objects){
+function ViewController(frameCount, objects, containerView){
+
+
+
+	this.focusedObj = null;
+	this.userAction = 'none';
+
 	this.FRAMECOUNT = typeof frameCount == 'undefined' ? 20 : frameCount;
 
 	if (objects == undefined) this.objects = [];
@@ -54,15 +60,36 @@ function ViewController(frameCount, objects){
 	//Init FrameLib
 	this.frameLib = {};
 
-	this.setFrame = function (frameNum) {
+	this.addObj = function(obToAdd){
+		
+		obToAdd.applyMatrix = false;
+
+		//Add event handlers for object focus
+		obToAdd.onMouseEnter = function(event) {
+			if (this.focusedObj) this.focusedObj.selected = false;
+			this.focusedObj = obToAdd;			
+			obToAdd.selected = true;
+
+		}.bind(this);
+
+		this.objects.push(obToAdd); //Add object to contents list
+
+		// obToAdd.onMouseLeave = function(event) {
+		// 	this.focusedObj = null;
+		// 	obToAdd.selected = false;
+
+		// }.bind(this);
+
+	}.bind(this);
+
+	this.setFrame = function(frameNum){
 		this.currentFrame = frameNum;
 		this.updateContents();
 		this.updateUI();
 		
 	}.bind(this);
 
-	this.logFrame = function() { 
-		console.log('log!');
+	this.logFrame = function(){
 
 		// if (!(this.currentFrame in this.frameLib)){ //If there's no keyframe make a new blank. 
 		if (!(this.currentFrame in this.frameLib)){
@@ -75,14 +102,12 @@ function ViewController(frameCount, objects){
 			var thisObject = this.objects[objI];
 			thisEntry.position = thisObject.position;
 			thisEntry.yaw =  thisObject.rotation;
-			console.log(thisEntry.position);
+			// console.log("Entered yaw " + thisEntry.yaw);
 
 		}
 		this.updateUI();//make sure frames show new content
 
 	}.bind(this);
-
-
 
 	this.initUI = function(){
 		// console.log('initing UI');
@@ -90,7 +115,7 @@ function ViewController(frameCount, objects){
 
 
 		//Create FrameUI View
-		console.log(this.FRAMECOUNT);
+		// console.log(this.FRAMECOUNT);
 		for (var i = 0; i<this.FRAMECOUNT;i++){
 		 
 			var frame = new Path.Rectangle([10+15*i,550], [10,40]);
@@ -122,8 +147,8 @@ function ViewController(frameCount, objects){
 		//Frame Count
 		
 		this.frameText = new PointText({
-		    point: [view.bounds.width-120, 50],
-		    content: 'Frame: ',
+		    point: [view.bounds.width-200, 50],
+		    content: 'Frame: \n Action: ',
 		    fillColor: 'black',
 		    fontFamily: 'Courier New',
 		    fontWeight: 'bold',
@@ -146,7 +171,7 @@ function ViewController(frameCount, objects){
 				}
 		};
 
-		this.frameText.content = 'Frame #: ' + this.currentFrame;
+		this.frameText.content = 'Frame #: ' + this.currentFrame + "\nAction: " + this.userAction;
 		console.log('UI Updated');
 		// console.log(this.frameText.content);
 	}.bind(this);
@@ -155,10 +180,15 @@ function ViewController(frameCount, objects){
 		if (this.currentFrame in this.frameLib){
 			for (obIndex in this.objects){
 				var thisOb = this.objects[obIndex];
-				thisOb.position = this.frameLib[this.currentFrame][thisOb.id].position;
-				console.log("Setting object #: " + thisOb.id + " to position: " + this.frameLib[this.currentFrame][thisOb.id].position);
+				var thisEntry = this.frameLib[this.currentFrame][thisOb.id];
+
+
+				thisOb.position = thisEntry.position;
+				thisOb.rotation = thisEntry.yaw;
+				// console.log("Setting object #: " + thisOb.id + " to position: " + thisEntry.position + "\nSetting rotation to: " + thisEntry.yaw);
 			}
 		}
+		else {}//Interpolate
 
 
 		// console.log(this.frameLib);
@@ -168,18 +198,106 @@ function ViewController(frameCount, objects){
 	this.initUI();
 	this.updateUI();
 
+	//User Interaction Stuff:
+	this.setAction = function(newAction){
+		if (this.userAction == newAction) this.userAction = 'none';
+		else {
+			this.userAction = newAction;
+		}
+	}.bind(this);
+
+	containerView.onKeyDown = function(event){
+		// console.log(event.key + 'pressed');
+		switch(event.key){
+			case 'g':
+				this.setAction('move');
+				break;
+			case 'r':
+				this.setAction('rotate');
+				break;
+			case 'space':
+				this.logFrame();
+				break;
+			case 'f':
+				this.setFrame(this.currentFrame+1);
+				break;
+			case 'e':
+				this.setFrame(this.currentFrame+1);
+				break;
+		}
+		this.updateUI();
+	}.bind(this);
+
+	containerView.onMouseMove = function(event){
+		switch (this.userAction){
+			case 'move':
+				this.focusedObj.position += event.delta;
+				break;
+			case 'rotate':
+				this.focusedObj.rotation += event.delta.y;
+				break;
+
+		}
+	}.bind(this);
+
 }
 
 
 
-//Test ActionLog
 
-// var testAct = new Action(ACT.MOVE,2,3);
-// var testFrame = new Frame([testAct],'absolute');
-// var testLib = {};
-// testLib[5] = testFrame;
+function Button(rect, color, text, clickAction){
+	this.rect = new Path.Rectangle(rect);
+	this.rect.fillColor = color;
+	this.rect.opacity = .6
+	this.text = new PointText({
+		    point: this.rect.position,
+		    content: text,
+		    fillColor: 'white',
+		    fontFamily: 'Courier New',
+		    fontWeight: 'bold',
+		    fontSize: 16
+		});
 
-// console.log(test);
+	this.text.position = this.rect.position //center align text to box;
+
+	this.group = new Group(this.rect,this.text);
+
+	this.group.onClick = clickAction;
+
+	Object.defineProperty(this, 'position', {
+		get: function(){
+			return this.group.position;
+		},
+		set: function(value){
+			// console.log('setter');
+			this.group.position = value;
+		}
+
+	});
+}
+
+var buttonRect = new Rectangle(view.center,[100,40])
+var button1 = new Button(buttonRect, 'blue', 'Test', function(){alert('test')});
+
+var button2 = new Button(buttonRect, 'red', 'log', function(event){mainView.logFrame();});
+
+button1.position = [60,30] //TODO (location should be set in constructor maybe change the rect parameter)
+button2.position = [60,80]
+
+	
+var mainView = new ViewController(50, null, view);
+
+
+var obj1 = new paper.Path.Rectangle(view.center, [50,150])
+obj1.fillColor = 'black';
+mainView.addObj(obj1);
+
+
+// onMouseMove = function(event){
+// 	obj1.position += event.delta;
+// }
+
+
 
 
 //Proto Foot Class to allow yaw shading to indicate footsteps, still need to figure out how to hand when rotated out of cardinal directions...
@@ -219,79 +337,3 @@ function ViewController(frameCount, objects){
 
 // 	}
 // });
-
-
-function Button(rect, color, text, clickAction){
-	this.rect = new Path.Rectangle(rect);
-	this.rect.fillColor = color;
-	this.rect.opacity = .6
-	this.text = new PointText({
-		    point: this.rect.position,
-		    content: text,
-		    fillColor: 'white',
-		    fontFamily: 'Courier New',
-		    fontWeight: 'bold',
-		    fontSize: 16
-		});
-
-	this.text.position = this.rect.position //center align text to box;
-
-	this.group = new Group(this.rect,this.text);
-
-	this.group.onClick = clickAction;
-
-	Object.defineProperty(this, 'position', {
-		get: function(){
-			return this.group.position;
-		},
-		set: function(value){
-			console.log('setter');
-			this.group.position = value;
-		}
-
-	});
-
-}
-
-
-
-
-var buttonRect = new Rectangle(view.center,[100,40])
-var button1 = new Button(buttonRect, 'blue', 'Test', function(){alert('test')});
-
-
-
-// var button = new Path.Rectangle([10,10], [100,40]);
-// button.fillColor = 'red';
-var button2 = new Button(buttonRect, 'red', 'log', function(event){
-	console.log('click');
-	mainView.logFrame();
-});
-
-button1.position = [60,30] //TODO (location should be set in constructor maybe change the rect parameter)
-button2.position = [60,80]
-
-	
-var mainView = new ViewController();
-
-
-var obj1 = new paper.Path.Rectangle(view.center, [50,150])
-obj1.fillColor = 'black';
-console.log('object id:' + obj1.id);
-mainView.objects.push(obj1);
-
-
-
-
-
-obj1.onMouseDrag = function(event){
-
-	obj1.position += event.delta;
-}
-
-
-var butrect = new paper.Rectangle(paper.view.center, [50,15]);
-var but1 = new paper.Path.Rectangle(butrect);
-but1.fillcolor = 'black';
-
-
