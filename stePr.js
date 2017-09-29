@@ -51,9 +51,11 @@ function ViewController(frameCount, objects, containerView){
 
 	this.FRAMECOUNT = typeof frameCount == 'undefined' ? 20 : frameCount;
 
-	this.objects = typeof objects == 'undefined' ? [] : objects
-	// if (objects == undefined) this.objects = [];
-	// else this.objects = objects;
+
+	// this.objects = typeof objects == 'undefined' ? [] : objects //Why doesn't this work here as above?
+	if (objects == undefined) this.objects = [];
+	else this.objects = objects;
+	
 
 	this.currentFrame = 0; 
 	this.uiFrameBoxes = [];
@@ -243,6 +245,10 @@ function ViewController(frameCount, objects, containerView){
 		}
 	}.bind(this);
 
+	containerView.onMouseClick = function(event){
+		this.setAction('none');
+	}
+
 }
 
 
@@ -277,8 +283,149 @@ function Button(rect, color, text, clickAction){
 		}
 
 	});
+} //Button class to help with interface
+
+
+
+//Proto Foot Class to allow pitch shading to indicate footsteps, still need to figure out how to hand when rotated out of cardinal directions...
+var FOOT_HEIGHT = 60;
+var FOOT_WIDTH = 20
+
+function Foot(position){ //FOOT class needs to extend paper.item otherwise it can't interact with environment with correctly TODO TODO TODO BUG
+
+	var startPos = typeof position == 'undefined' ? view.center : position;
+	this.pitch = 0;
+	this.position = null;
+
+	this.shadowRep = new paper.Path.Rectangle(view.center, [FOOT_WIDTH,FOOT_HEIGHT])
+	this.shadowRep.position = startPos; //no need to keep class position as we can just return one of the element's xy's same goes for yaw, since pitch is not maintained by paperjs we need our own.
+	this.shadowRep.applyMatrix = false; //Only have to do this once since all members are clones of shadowRep
+
+	this.footRep = this.shadowRep.clone();
+	this.shadowRep.opacity = .2;
+
+	this.shadowRep.fillColor = 'grey';
+	this.footRep.fillColor = 'black';
+
+	this.footMask = this.footRep.clone();
+
+	var footGroup = new Group(this.footMask,this.footRep);
+	footGroup.clipped = true;
+
+	Object.defineProperty(this, 'position', {
+	get: function() {
+		return this.shadowRep.selected;
+	},
+	set: function(value) {
+		this.shadowRep.selected = value;
+		console.log('foot selected');
+	}
+});
+
+Object.defineProperty(this, 'position', {
+	get: function() {
+		return this.footRep.position;
+	},
+	set: function(value) {
+		console.log('setting foot position')
+		this.footRep.position = value;
+		this.shadowRep.position = value;
+		this.footMask.position = value;
+	}
+});
+
+Object.defineProperty(this, 'pitch', {
+	get: function() {
+		return this.footRep.rotation;
+	},
+	set: function(value) {
+		this.footRep.rotation = value;
+		this.shadowRep.rotation = value;
+		this.footMask.rotation = value;
+	}
+});
+
+Object.defineProperty(this, 'yaw', { //The problem is with these setters every time we set the position the yaw will be reset BUG TODO have to resovle
+	get: function() {
+		return this.yaw;
+	},
+	set: function(value) {
+		this.pitch = value;
+		if (this.pitch == 0) {//Mostly feet will be flat
+			this.footMask.position = this.footRep.position;
+		}
+		else {
+			var offset = FOOT_HEIGHT/90 //takes away one pixel of shoe for degree of rotation, I think... TODO
+			var dirVec = new Point(0, 1);
+
+			dirVec.angle += this.shadowRep.rotation+180;
+
+			footMask.position = this.footRep.position + dirVec
+
+		}
+
+
+	}
+});
+
 }
 
+//Need function to set rotation center too! TODO check paper syntax on that....
+
+// Object.defineProperty(Foot.prototype, 'position', {
+// 	get: function() {
+// 		return this.footRep.position;
+// 	},
+// 	set: function(value) {
+// 		this.footRep.position = value;
+// 		this.shadowRep.position = value;
+// 		this.footMask.position = value;
+// 	}
+// });
+
+// Object.defineProperty(Foot.prototype, 'pitch', {
+// 	get: function() {
+// 		return this.footRep.rotation;
+// 	},
+// 	set: function(value) {
+// 		this.footRep.rotation = value;
+// 		this.shadowRep.rotation = value;
+// 		this.footMask.rotation = value;
+// 	}
+// });
+
+// Object.defineProperty(Foot.prototype, 'yaw', { //The problem is with these setters every time we set the position the yaw will be reset BUG TODO have to resovle
+// 	get: function() {
+// 		return this.yaw;
+// 	},
+// 	set: function(value) {
+// 		this.pitch = value;
+// 		if (this.pitch == 0) {//Mostly feet will be flat
+// 			this.footMask.position = this.footRep.position;
+// 		}
+// 		else {
+// 			var offset = FOOT_HEIGHT/90 //takes away one pixel of shoe for degree of rotation, I think... TODO
+// 			var dirVec = new Point(0, 1);
+
+// 			dirVec.angle += this.shadowRep.rotation+180;
+
+// 			footMask.position = this.footRep.position + dirVec
+
+// 		}
+
+
+// 	}
+// });
+
+
+
+
+
+
+//Create View	
+var mainView = new ViewController(50, null, view);
+
+//Create Buttons
 var buttonRect = new Rectangle(view.center,[100,40])
 var button1 = new Button(buttonRect, 'blue', 'Test', function(){alert('test')});
 
@@ -287,14 +434,18 @@ var button2 = new Button(buttonRect, 'red', 'log', function(event){mainView.logF
 button1.position = [60,30] //TODO (location should be set in constructor maybe change the rect parameter)
 button2.position = [60,80]
 
-	
-var mainView = new ViewController(50, null, view);
 
-
+//Create stuff to animate:
 var obj1 = new paper.Path.Rectangle(view.center, [50,150])
 obj1.fillColor = 'black';
-mainView.addObj(obj1);
 
+var testFoot = new Foot();
+
+
+
+//Add stuff to scene
+mainView.addObj(obj1);
+mainView.addObj(testFoot);
 
 // onMouseMove = function(event){
 // 	obj1.position += event.delta;
@@ -303,73 +454,3 @@ mainView.addObj(obj1);
 
 
 
-//Proto Foot Class to allow pitch shading to indicate footsteps, still need to figure out how to hand when rotated out of cardinal directions...
-
-
-function Foot(position){
-
-	var startPos = typeof position == 'undefined' ? view.center : position;
-	this.pitch = 0;
-
-	this.shadowRep = new paper.Path.Rectangle(view.center, [20,60])
-	shadowRep.position = startPos; //no need to keep class position as we can just return one of the element's xy's same goes for yaw, since pitch is not maintained by paperjs we need our own.
-	shadowRep.applyMatrix = false; //Only have to do this once since all members are clones of shadowRep
-
-	this.footRep = shadowRep.clone();
-	this.shadowRep.opacity = .2;
-
-	this.shadowRep.fillColor = 'grey';
-	this.footRep.fillColor = 'black';
-
-	this.footMask = footRep.clone();
-
-	var footGroup = new Group(footMask,footRep);
-	footGroup.clipped = true;
-
-}
-
-
-
-Object.defineProperty(Foot, 'position', {
-	get: function() {
-		return this.footRep.position;
-	},
-	set: function(value) {
-		this.footRep.position = value;
-		this.shadowRep.position = value;
-	}
-});
-
-Object.defineProperty(Foot, 'pitch', {
-	get: function() {
-		return this.footRep.rotation;
-	},
-	set: function(value) {
-		this.pitch = value;
-		if (this.pitch == 0) {//Mostly feet will be flat
-		}
-		else if (this.pitch<0){//When not flat likely to tilt back
-		}
-		else if (this.pitch>0){//But somtimes they're pointed forward
-		}
-
-
-	}
-});
-
-Object.defineProperty(Foot, 'yaw', {
-	get: function() {
-		return this.yaw;
-	},
-	set: function(value) {
-		this.pitch = value;
-		if (this.pitch == 0) {//Mostly feet will be flat
-		}
-		else if (this.pitch<0){//When not flat likely to tilt back
-		}
-		else if (this.pitch>0){//But somtimes they're pointed forward
-		}
-
-
-	}
-});
