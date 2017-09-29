@@ -121,20 +121,20 @@ function ViewController(frameCount, objects){
 		}
 		//Frame Count
 		
-
-		this.frameText = new PointText([view.bounds.width-100,40]);
-		this.frameText.justification = 'center';
-		this.frameText.fillColor = 'black';
-		
-		this.frameText.fontSize = 20;
+		this.frameText = new PointText({
+		    point: [view.bounds.width-120, 50],
+		    content: 'Frame: ',
+		    fillColor: 'black',
+		    fontFamily: 'Courier New',
+		    fontWeight: 'bold',
+		    fontSize: 16
+		});
 
 
 	}.bind(this);
 
 	this.updateUI = function(){
-		for (var i in this.uiFrameBoxes){ //Update frame boxes
-			// console.log('updating frame ' + i);
-			
+		for (var i in this.uiFrameBoxes){ //Update frame boxes			
 			if (i == this.currentFrame) this.uiFrameBoxes[i].strokeColor = UICOLORS.frameStrokeSelected;
 			else this.uiFrameBoxes[i].strokeColor = UICOLORS.frameStrokeUnSelected;
 
@@ -146,7 +146,9 @@ function ViewController(frameCount, objects){
 				}
 		};
 
-		this.frameText = 'Frame #: '; + this.currentFrame;
+		this.frameText.content = 'Frame #: ' + this.currentFrame;
+		console.log('UI Updated');
+		// console.log(this.frameText.content);
 	}.bind(this);
 
 	this.updateContents = function(){
@@ -157,6 +159,8 @@ function ViewController(frameCount, objects){
 				console.log("Setting object #: " + thisOb.id + " to position: " + this.frameLib[this.currentFrame][thisOb.id].position);
 			}
 		}
+
+
 		// console.log(this.frameLib);
 	}.bind(this);
 
@@ -216,15 +220,58 @@ function ViewController(frameCount, objects){
 // 	}
 // });
 
-var button = new Path.Rectangle([10,10], [100,40]);
-button.fillColor = 'red';
-button.onClick = function(event){
-	console.log('click');
-	mainView.logFrame();
+
+function Button(rect, color, text, clickAction){
+	this.rect = new Path.Rectangle(rect);
+	this.rect.fillColor = color;
+	this.rect.opacity = .6
+	this.text = new PointText({
+		    point: this.rect.position,
+		    content: text,
+		    fillColor: 'white',
+		    fontFamily: 'Courier New',
+		    fontWeight: 'bold',
+		    fontSize: 16
+		});
+
+	this.text.position = this.rect.position //center align text to box;
+
+	this.group = new Group(this.rect,this.text);
+
+	this.group.onClick = clickAction;
+
+	Object.defineProperty(this, 'position', {
+		get: function(){
+			return this.group.position;
+		},
+		set: function(value){
+			console.log('setter');
+			this.group.position = value;
+		}
+
+	});
+
 }
 
-	
 
+
+
+var buttonRect = new Rectangle(view.center,[100,40])
+var button1 = new Button(buttonRect, 'blue', 'Test', function(){alert('test')});
+
+
+
+// var button = new Path.Rectangle([10,10], [100,40]);
+// button.fillColor = 'red';
+var button2 = new Button(buttonRect, 'red', 'log', function(event){
+	console.log('click');
+	mainView.logFrame();
+});
+
+button1.position = [60,30] //TODO (location should be set in constructor maybe change the rect parameter)
+button2.position = [60,80]
+
+	
 var mainView = new ViewController();
 
 
