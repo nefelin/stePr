@@ -51,8 +51,9 @@ function ViewController(frameCount, objects, containerView){
 
 	this.FRAMECOUNT = typeof frameCount == 'undefined' ? 20 : frameCount;
 
-	if (objects == undefined) this.objects = [];
-	else this.objects = [];
+	this.objects = typeof objects == 'undefined' ? [] : objects
+	// if (objects == undefined) this.objects = [];
+	// else this.objects = objects;
 
 	this.currentFrame = 0; 
 	this.uiFrameBoxes = [];
@@ -62,7 +63,7 @@ function ViewController(frameCount, objects, containerView){
 
 	this.addObj = function(obToAdd){
 		
-		obToAdd.applyMatrix = false;
+		// obToAdd.applyMatrix = false; //It's important that all objects in view don't apply matrix but we'll handly this in object design rather than having the view enforce it
 
 		//Add event handlers for object focus
 		obToAdd.onMouseEnter = function(event) {
@@ -83,6 +84,8 @@ function ViewController(frameCount, objects, containerView){
 	}.bind(this);
 
 	this.setFrame = function(frameNum){
+		console.log(frameNum);
+		if ((frameNum < 0) || (frameNum >= this.FRAMECOUNT)) return -1;
 		this.currentFrame = frameNum;
 		this.updateContents();
 		this.updateUI();
@@ -222,7 +225,7 @@ function ViewController(frameCount, objects, containerView){
 				this.setFrame(this.currentFrame+1);
 				break;
 			case 'e':
-				this.setFrame(this.currentFrame+1);
+				this.setFrame(this.currentFrame-1);
 				break;
 		}
 		this.updateUI();
@@ -300,40 +303,73 @@ mainView.addObj(obj1);
 
 
 
-//Proto Foot Class to allow yaw shading to indicate footsteps, still need to figure out how to hand when rotated out of cardinal directions...
+//Proto Foot Class to allow pitch shading to indicate footsteps, still need to figure out how to hand when rotated out of cardinal directions...
 
 
-// function Foot(position){
-// 	this.yaw = 0;
-// 	this.shadowRep = new paper.Path.Rectangle(view.center, [20,60])
-// 	this.footRep = shadowRep.clone();
-// 	this.shadowRep.opacity = .1;
+function Foot(position){
 
-// }
+	var startPos = typeof position == 'undefined' ? view.center : position;
+	this.pitch = 0;
 
-// Object.defineProperty(Foot, 'position', {
-// 	get: function() {
-// 		return this.footRep.position;
-// 	},
-// 	set: function(value) {
-// 		this.footRep.position = value;
-// 		this.shadowRep.position = value;
-// 	}
-// });
+	this.shadowRep = new paper.Path.Rectangle(view.center, [20,60])
+	shadowRep.position = startPos; //no need to keep class position as we can just return one of the element's xy's same goes for yaw, since pitch is not maintained by paperjs we need our own.
+	shadowRep.applyMatrix = false; //Only have to do this once since all members are clones of shadowRep
 
-// Object.defineProperty(Foot, 'yaw', {
-// 	get: function() {
-// 		return this.yaw;
-// 	},
-// 	set: function(value) {
-// 		this.yaw = value;
-// 		if (this.yaw == 0) {//Mostly feet will be flat
-// 		}
-// 		else if (this.yaw<0){//When not flat likely to tilt back
-// 		}
-// 		else if (this.yaw>0){//But somtimes they're pointed forward
-// 		}
+	this.footRep = shadowRep.clone();
+	this.shadowRep.opacity = .2;
+
+	this.shadowRep.fillColor = 'grey';
+	this.footRep.fillColor = 'black';
+
+	this.footMask = footRep.clone();
+
+	var footGroup = new Group(footMask,footRep);
+	footGroup.clipped = true;
+
+}
 
 
-// 	}
-// });
+
+Object.defineProperty(Foot, 'position', {
+	get: function() {
+		return this.footRep.position;
+	},
+	set: function(value) {
+		this.footRep.position = value;
+		this.shadowRep.position = value;
+	}
+});
+
+Object.defineProperty(Foot, 'pitch', {
+	get: function() {
+		return this.footRep.rotation;
+	},
+	set: function(value) {
+		this.pitch = value;
+		if (this.pitch == 0) {//Mostly feet will be flat
+		}
+		else if (this.pitch<0){//When not flat likely to tilt back
+		}
+		else if (this.pitch>0){//But somtimes they're pointed forward
+		}
+
+
+	}
+});
+
+Object.defineProperty(Foot, 'yaw', {
+	get: function() {
+		return this.yaw;
+	},
+	set: function(value) {
+		this.pitch = value;
+		if (this.pitch == 0) {//Mostly feet will be flat
+		}
+		else if (this.pitch<0){//When not flat likely to tilt back
+		}
+		else if (this.pitch>0){//But somtimes they're pointed forward
+		}
+
+
+	}
+});
