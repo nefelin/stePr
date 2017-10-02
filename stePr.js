@@ -142,13 +142,9 @@ function ViewController(frameCount, objects, containerView){
 	}.bind(this);
 
 	this.loadFrame = function(){
-		this.actionLog = {}; //Clear leftovers from last frame;
-		this.UIGroupActionLog.removeChildren();
-		// for (var i in this.UILayerActions.){
-		// 	this.actionLogUI[i].remove();
-		// }
+		this.actionLog = {}; //Start fresh
 
-		if (this.currentFrame in this.frameLib){
+		if (this.currentFrame in this.frameLib){ //This should be abstracted more clearly TODO each object's position and actionlog should be in the same Object
 			for (obIndex in this.objects){
 				var thisOb = this.objects[obIndex];
 				var thisEntry = this.frameLib[this.currentFrame][thisOb.id];
@@ -239,8 +235,11 @@ function ViewController(frameCount, objects, containerView){
 		//DraUILayerObject
 		
 
+
+		//Feel like maybe this should be in it's own function.
+		//Or that they're should be an addTranslation, delTranslation, or something equivalent. 
+		//Then that drawing could be separate?
 		this.UIGroupActionLog.removeChildren()
-		// this.drawActionLog();
 
 		var itemCount = 0;
 		for (key in this.actionLog) {
@@ -255,18 +254,21 @@ function ViewController(frameCount, objects, containerView){
 					break;
 			}
 
-			(function(thisKey, thisItem, thisLog, thisContext) {
+			(function(thisKey, thisItem, thisLog, thisView) {
 				logItemRep.onClick = function(){
-					// alert(thisKey)
+					
+					thisView.focusedObj[thisKey] += thisLog[thisKey]; //Undo the translation
 
-					thisItem.remove();
+					thisItem.remove(); // Remove UI Element
 
-					delete thisLog[thisKey];
+					delete thisLog[thisKey]; //Remove Log Entry QUESTION: What's the difference between [] and .blahblah?
 
-					console.log(thisLog);
+					// console.log(thisLog);
+
+					thisView.updateUI(); //Update View
 				}
 
-			;})(key, logItemRep, this.actionLog);
+			;})(key, logItemRep, this.actionLog, this);
 
 
 			// (function(item, thisKey, log) {
@@ -318,6 +320,9 @@ function ViewController(frameCount, objects, containerView){
 	this.startAction = function(actType){
 
 		switch (actType){//record targets current state (only for relevant action)
+						 //*** This should not be necessary, should just log absolute positions 
+						 //and base changes off of that. Otherwise we're dealing with change from last move
+						 //not from start position. 
 			case 'position':
 				this.obStartState = this.focusedObj.position;
 				break;
@@ -520,7 +525,6 @@ Object.defineProperty(this, 'yaw', { //The problem is with these setters every t
 });
 
 }
-
 //Need function to set rotation center too! TODO check paper syntax on that....
 
 // Object.defineProperty(Foot.prototype, 'position', {
@@ -582,14 +586,23 @@ var mainView = new ViewController(50, null, view);
 
 
 //Create stuff to animate:
+var d1 = new Item();
+
+
 var obj1 = new paper.Path.Rectangle(view.center, [50,150])
 obj1.fillColor = 'black';
+
+var obj2 = obj1.clone(); 
+obj2.position += [60,0];
+
+
 
 // var testFoot = new Foot(); //OUT until we fix foot specific code TODO
 // mainView.addObj(testFoot);
 
 
 mainView.addObj(obj1);
+mainView.addObj(obj2);
 
 
 // onMouseMove = function(event){
