@@ -59,19 +59,23 @@ var UICOLORS = {
 	frameStrokeUnSelected : 'black'
 }
 
+
+
 function ViewController(frameCount, objects, containerView){
 	this.UIGroupHUD = new Group();
 	this.UIGroupActionLog = new Group();
 
 	//Vars for recording individual translations
 	this.obStartState = null; //Used to track object change
-	this.actionLog = {}; //Holds current translations until they are logged to a keyframe
 	this.actionLogUI = [];
 
+	this.dancers = [];
+	
 	this.focusedObj = null;
 	this.userAction = 'none';
 
 	this.FRAMECOUNT = typeof frameCount == 'undefined' ? 20 : frameCount;
+	this.frameLib = {};
 
 
 	// this.objects = typeof objects == 'undefined' ? [] : objects //Why doesn't this work here as above?
@@ -82,28 +86,26 @@ function ViewController(frameCount, objects, containerView){
 	this.currentFrame = 0; 
 	this.uiFrameBoxes = [];
 
-	//Init FrameLib
-	this.frameLib = {};
+	this.addDancer = function(newDancer){ //When new dancers are added throw them on the array and register each of their objects for handling
+		this.dancers.push(newDancer);
+		for (var key in newDancer.contents){
+			this.registerForHandling(newDancer.contents[key].rep);
+		}
+	}.bind(this)
 
-	this.addObj = function(obToAdd){
-		
-		obToAdd.applyMatrix = false; //TODO It's important that all objects in view don't apply matrix but we'll handly this in object design rather than having the view enforce it
+	this.registerForHandling = function(obToAdd){
+		// obToAdd.applyMatrix = false; //TODO It's important that all objects in view don't apply matrix but we'll handly this in object design rather than having the view enforce it
 
 		//Add event handlers for object focus
 		obToAdd.onMouseEnter = function(event) {
-			if (this.focusedObj) this.focusedObj.selected = false;
-			this.focusedObj = obToAdd;			
-			obToAdd.selected = true;
+			if (this.userAction=='none'){
+				if (this.focusedObj) this.focusedObj.selected = false; //If there was another object with focus, remove its border
 
+				this.focusedObj = obToAdd; //Change focusedObJ point to currently moused obj
+				obToAdd.selected = true;	//Add a border
+			}
+		
 		}.bind(this);
-
-		this.objects.push(obToAdd); //Add object to contents list
-
-		// obToAdd.onMouseLeave = function(event) {
-		// 	this.focusedObj = null;
-		// 	obToAdd.selected = false;
-
-		// }.bind(this);
 
 	}.bind(this);
 
@@ -351,7 +353,7 @@ function ViewController(frameCount, objects, containerView){
 				break;
 		}
 		
-		this.actionLog[this.userAction] = stateDiff;//Record Difference record movement in the actionLog for this frame, which will be added (plus absolute positions) to the framelib object IF the frame gets logged
+		this.logFrame[this.userAction] = stateDiff;//Record Difference record movement in the actionLog for this frame, which will be added (plus absolute positions) to the framelib object IF the frame gets logged
 		// console.log(this.actionLog);
 		
 
@@ -393,6 +395,68 @@ function ViewController(frameCount, objects, containerView){
 		}
 	}.bind(this);
 
+}
+
+
+/*
+Dancer = {
+	contents = {
+		foot_left: {
+			rep: new Path.Rect....,
+			owner: (dancer OB)
+			mirror: (other foot)
+			
+		foot_right: new Path.Rect....,
+		weight: new Path.Rect...
+	}
+
+	
+	actionLog
+}
+
+*/
+var HIP_WIDTH = 30;
+var FOOT_DIMENSIONS = [20,60];
+var FOOT_REP = new Path.Rectangle({
+	point:[-100,-100],
+	size:FOOT_DIMENSIONS,
+	fillColor:'black'
+});
+var WEIGHT_REP = new Path.Circle({
+	center: [-100,-100],
+	radius:5,
+	fillColor: 'red'
+})
+
+function Dancer(startPos, startingYaw/*unImplemented TODO*/) {
+	this.contents ={
+		left: {
+			rep: FOOT_REP.clone(),
+			owner: this
+			//Make mirror after construction
+		},
+		right: {
+			rep: FOOT_REP.clone(),
+			owner: this
+			//Make mirror after construction	
+		},
+		weight: {
+			rep: WEIGHT_REP.clone(),
+			type: 'weight'
+			owner: this,
+		},
+		wholeBody: new Group(this.contents.weight.rep, this.contents.left.rep, this.contents.right.rep)
+	}
+
+	this.contents.left.mirror = this.contents.right.rep;
+	this.contents.right.mirror = this.contents.left.rep;
+
+	this.contents.left.rep.position = startPos + [-.5*HIP_WIDTH,0];
+	this.contents.right.rep.position = startPos + [.5*HIP_WIDTH,0];
+	this.contents.weight.rep.position = this.contents.left.rep.position;
+
+	this.frameLib = {};
+	this.actionLib = {}
 }
 
 
@@ -525,57 +589,6 @@ Object.defineProperty(this, 'yaw', { //The problem is with these setters every t
 });
 
 }
-//Need function to set rotation center too! TODO check paper syntax on that....
-
-// Object.defineProperty(Foot.prototype, 'position', {
-// 	get: function() {
-// 		return this.footRep.position;
-// 	},
-// 	set: function(value) {
-// 		this.footRep.position = value;
-// 		this.shadowRep.position = value;
-// 		this.footMask.position = value;
-// 	}
-// });
-
-// Object.defineProperty(Foot.prototype, 'pitch', {
-// 	get: function() {
-// 		return this.footRep.rotation;
-// 	},
-// 	set: function(value) {
-// 		this.footRep.rotation = value;
-// 		this.shadowRep.rotation = value;
-// 		this.footMask.rotation = value;
-// 	}
-// });
-
-// Object.defineProperty(Foot.prototype, 'yaw', { //The problem is with these setters every time we set the position the yaw will be reset BUG TODO have to resovle
-// 	get: function() {
-// 		return this.yaw;
-// 	},
-// 	set: function(value) {
-// 		this.pitch = value;
-// 		if (this.pitch == 0) {//Mostly feet will be flat
-// 			this.footMask.position = this.footRep.position;
-// 		}
-// 		else {
-// 			var offset = FOOT_HEIGHT/90 //takes away one pixel of shoe for degree of rotation, I think... TODO
-// 			var dirVec = new Point(0, 1);
-
-// 			dirVec.angle += this.shadowRep.rotation+180;
-
-// 			footMask.position = this.footRep.position + dirVec
-
-// 		}
-
-
-// 	}
-// });
-
-
-
-
-
 
 //Create View	
 var mainView = new ViewController(50, null, view);
@@ -586,29 +599,18 @@ var mainView = new ViewController(50, null, view);
 
 
 //Create stuff to animate:
-var d1 = new Item();
+// var d1 = new Item();
 
 
-var obj1 = new paper.Path.Rectangle(view.center, [50,150])
-obj1.fillColor = 'black';
+// var obj1 = new paper.Path.Rectangle(view.center, [50,150])
+// obj1.fillColor = 'black';
 
-var obj2 = obj1.clone(); 
-obj2.position += [60,0];
+// var obj2 = obj1.clone(); 
+// obj2.position += [60,0];
 
+var d1 = new Dancer(view.center);
+mainView.addDancer(d1);
 
-
-// var testFoot = new Foot(); //OUT until we fix foot specific code TODO
-// mainView.addObj(testFoot);
-
-
-mainView.addObj(obj1);
-mainView.addObj(obj2);
-
-
-// onMouseMove = function(event){
-// 	obj1.position += event.delta;
-// }
-
-
-
+// mainView.registerForHandling(obj1);
+// mainView.registerForHandling(obj2);
 
