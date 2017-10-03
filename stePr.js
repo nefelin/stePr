@@ -88,8 +88,8 @@ function ViewController(frameCount, objects, containerView){
 
 	this.addDancer = function(newDancer){ //When new dancers are added throw them on the array and register each of their objects for handling
 		this.dancers.push(newDancer);
-		for (var key in newDancer.contents){
-			this.registerForHandling(newDancer.contents[key].rep);
+		for (var i in newDancer.wholeBody.children){
+			this.registerForHandling(newDancer.wholeBody.children[i]);
 		}
 	}.bind(this)
 
@@ -103,6 +103,7 @@ function ViewController(frameCount, objects, containerView){
 
 				this.focusedObj = obToAdd; //Change focusedObJ point to currently moused obj
 				obToAdd.selected = true;	//Add a border
+				console.log(obToAdd.owner.name);
 			}
 		
 		}.bind(this);
@@ -141,6 +142,11 @@ function ViewController(frameCount, objects, containerView){
 		}
 		this.updateUI();//make sure frames show new content
 
+	}.bind(this);
+
+	this.logTranslation = function(stateDiff) {
+		console.log(this.focusedObj.owner);
+		this.focusedObj.owner.transLogStash[this.focusedObj.name][this.userAction] = stateDiff;
 	}.bind(this);
 
 	this.loadFrame = function(){
@@ -241,56 +247,49 @@ function ViewController(frameCount, objects, containerView){
 		//Feel like maybe this should be in it's own function.
 		//Or that they're should be an addTranslation, delTranslation, or something equivalent. 
 		//Then that drawing could be separate?
-		this.UIGroupActionLog.removeChildren()
 
-		var itemCount = 0;
-		for (key in this.actionLog) {
+		
+		// this.UIGroupActionLog.removeChildren()
 
-			itemCount++;
-			switch (key){
-				case 'position': //make boxes for 
-					var logItemRep = UISYMBOLS.ACT_MOVE.clone();
-					break;
-				case 'rotation':
-					var logItemRep = UISYMBOLS.ACT_ROTATE.clone();
-					break;
-			}
+		// var itemCount = 0;
 
-			(function(thisKey, thisItem, thisLog, thisView) {
-				logItemRep.onClick = function(){
-					
-					thisView.focusedObj[thisKey] += thisLog[thisKey]; //Undo the translation
+		//  this.dancers.forEach(function(dancer){ // TODO BUG a little broken and not the priority as I would rather implement a different display anyways
+		//  	for (var limb in dancer.transLogStash) {
+		//  		for (var trans in dancer.transLogStash[limb]) {
+		// 			switch (trans){
+		// 				case 'position': //make boxes for 
+		// 					var logItemRep = UISYMBOLS.ACT_MOVE.clone();
+		// 					break;
+		// 				case 'rotation':
+		// 					var logItemRep = UISYMBOLS.ACT_ROTATE.clone();
+		// 					break;
+		// 			}
 
-					thisItem.remove(); // Remove UI Element
+		// 			(function(thisKey, thisItem, thisLog, thisView) {
+		// 				logItemRep.onClick = function(){
+							
+		// 					thisView.focusedObj[thisKey] += thisLog[thisKey]; //Undo the translation
 
-					delete thisLog[thisKey]; //Remove Log Entry QUESTION: What's the difference between [] and .blahblah?
+		// 					thisItem.remove(); // Remove UI Element
 
-					// console.log(thisLog);
+		// 					delete thisLog[thisKey]; //Remove Log Entry QUESTION: What's the difference between [] and .blahblah?
 
-					thisView.updateUI(); //Update View
-				}
+		// 					// console.log(thisLog);
 
-			;})(key, logItemRep, this.actionLog, this);
+		// 					thisView.updateUI(); //Update View
+		// 				}
+
+		// 			;})(trans, logItemRep, dancer.transLogStash, this);
 
 
-			// (function(item, thisKey, log) {
-			// 	logItemRep.onClick = function(){
-			// 		console.log('transform click');
-			// 		console.log(log.thisKey);
-			// 		// item[thisKey] -= log.thisKey; //reverse movement on object, 
+		// 			logItemRep.position = [view.bounds.width-200,100+itemCount*20];
+		// 			// this.UIGroupActionLog.addChild(logItemRep);
 
-			// 		delete log.thisKey;//delete key
+		//  		}
+		//  	}
 
-					
-			// 		logItemRep.remove();//delete rep
-			// 	}
-
-			// }.bind(this))(logItemRep, key, this.actionLog)
-
-			logItemRep.position = [view.bounds.width-200,100+itemCount*20];
-			this.UIGroupActionLog.addChild(logItemRep);
-
-		}
+		//  })
+		
 
 
 		// console.log("active: " + project.activeLayer);
@@ -320,7 +319,7 @@ function ViewController(frameCount, objects, containerView){
 	}.bind(this);
 
 	this.startAction = function(actType){
-
+		console.log(this.focusedObj);
 		switch (actType){//record targets current state (only for relevant action)
 						 //*** This should not be necessary, should just log absolute positions 
 						 //and base changes off of that. Otherwise we're dealing with change from last move
@@ -344,18 +343,19 @@ function ViewController(frameCount, objects, containerView){
 		switch (this.userAction){//Note difference between last position and this position (or rotation or pitch or whatever)
 			case 'position':
 				var stateDiff = this.obStartState - this.focusedObj.position;
+				
 				break;
 			case 'rotation':
 				var stateDiff = this.obStartState - this.focusedObj.rotation;
+				
 				break;
 			case 'pitch':
 				var stateDiff = this.obStartState - this.focusedObj.pitch;
+
 				break;
 		}
 		
-		this.logFrame[this.userAction] = stateDiff;//Record Difference record movement in the actionLog for this frame, which will be added (plus absolute positions) to the framelib object IF the frame gets logged
-		// console.log(this.actionLog);
-		
+		this.logTranslation(stateDiff);
 
 		this.updateUI();//update the UI to show new actions created
 	}.bind(this);
@@ -429,34 +429,41 @@ var WEIGHT_REP = new Path.Circle({
 })
 
 function Dancer(startPos, startingYaw/*unImplemented TODO*/) {
-	this.contents ={
-		left: {
-			rep: FOOT_REP.clone(),
-			owner: this
-			//Make mirror after construction
-		},
-		right: {
-			rep: FOOT_REP.clone(),
-			owner: this
-			//Make mirror after construction	
-		},
-		weight: {
-			rep: WEIGHT_REP.clone(),
-			type: 'weight'
-			owner: this,
-		},
-		wholeBody: new Group(this.contents.weight.rep, this.contents.left.rep, this.contents.right.rep)
-	}
 
-	this.contents.left.mirror = this.contents.right.rep;
-	this.contents.right.mirror = this.contents.left.rep;
+	//create Objects
+	this.left = FOOT_REP.clone();
+	this.right = FOOT_REP.clone();
 
-	this.contents.left.rep.position = startPos + [-.5*HIP_WIDTH,0];
-	this.contents.right.rep.position = startPos + [.5*HIP_WIDTH,0];
-	this.contents.weight.rep.position = this.contents.left.rep.position;
+	this.weight = WEIGHT_REP.clone();
+	this.wholeBody =  new Group(this.left, this.right,this.weight);
+
+	this.wholeBody.applyMatrix = false; 
+
+
+	
+	//need to add more custom pointers for owner weight? wholeBody. 
+	//how do I handle weight management TODO
+	this.wholeBody.children.forEach(function(el){
+		el.applyMatrix = false;
+		el.owner = this;
+	}.bind(this))
+
+	this.left.mirror = this.right;
+	this.right.mirror = this.left;
+	this.left.name = 'left';
+	this.right.name = 'right';
+	this.weight.name = 'weight';
+
+	this.left.position = startPos + [-.5*HIP_WIDTH,0];
+	this.right.position = startPos + [.5*HIP_WIDTH,0];
+	this.weight.position = this.left.position;
 
 	this.frameLib = {};
-	this.actionLib = {}
+	this.transLogStash = {
+		left: {},
+		right: {},
+		weight: {}
+	}
 }
 
 
@@ -609,6 +616,7 @@ var mainView = new ViewController(50, null, view);
 // obj2.position += [60,0];
 
 var d1 = new Dancer(view.center);
+d1.name = 'dude';
 mainView.addDancer(d1);
 
 // mainView.registerForHandling(obj1);
