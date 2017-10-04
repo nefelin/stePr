@@ -1,4 +1,4 @@
-// //FrameLib stuff
+// //frameLib stuff
 
 
 // function Action(type, amount, target){
@@ -59,6 +59,12 @@ var UICOLORS = {
 
 
 function ViewController(frameCount, objects, containerView){
+	//Play Control Variables
+	this.playing = false;
+
+	this.BPM = 80; //This controls the resolution of the frames, each frame is a beat. So 60 / BMP = length of each frame in seconds.
+
+	//UI Control Groups
 	this.UIGroupHUD = new Group();
 	this.UIGroupActionLog = new Group();
 
@@ -90,6 +96,8 @@ function ViewController(frameCount, objects, containerView){
 		}
 	}.bind(this)
 
+	
+
 	this.registerForHandling = function(obToAdd){
 		
 
@@ -111,7 +119,7 @@ function ViewController(frameCount, objects, containerView){
 		
 		if ((frameNum < 0) || (frameNum >= this.FRAMECOUNT)) return -1;
 		this.currentFrame = frameNum;
-		this.loadFrame();
+		
 		this.updateUI();
 		
 	}.bind(this);
@@ -153,11 +161,12 @@ function ViewController(frameCount, objects, containerView){
 		// this.focusedObj.owner.transLogStash[this.focusedObj.name][this.userAction] = stateDiff;
 	}.bind(this);
 
-	this.loadFrame = function(){
+	this.loadFrame = function(frameNum){
+
 		this.dancers.forEach(function(dancer){ //each dancer loads their own frame info
 
 			dancer.initTransLogStash(); //Start with black transLog
-			dancer.loadFrame(this.currentFrame); //Really this should be like dancer.loadMoment that calls a loadFram if loadFrame exists.... TODO
+			dancer.loadFrame(frameNum); //Really this should be like dancer.loadMoment that calls a loadFram if loadFrame exists.... TODO
 
 		}.bind(this));
 
@@ -166,7 +175,7 @@ function ViewController(frameCount, objects, containerView){
 	this.initUI = function(){
 		//Buttons
 		var buttonRect = new Rectangle(view.center,[100,40])
-		var button1 = new Button(buttonRect, 'blue', 'Play', function(){alert('Will run animation')});
+		var button1 = new Button(buttonRect, 'blue', 'Play', function(){this.togglePlayback();}.bind(this));
 
 		var button2 = new Button(buttonRect, 'red', 'log', function(event){this.logFrame();});
 		button1.position = [60,30] //TODO (location should be set in constructor maybe change the rect parameter)
@@ -197,6 +206,7 @@ function ViewController(frameCount, objects, containerView){
 				// alert(ind);
 				whichframe.onClick = function(event){
 					controller.setFrame(ind);
+					controller.loadFrame(ind);
 				}
 			})(i, frame, this);
 
@@ -234,7 +244,7 @@ function ViewController(frameCount, objects, containerView){
 
 		this.frameText.content = 'Frame #: ' + this.currentFrame + "\nAction: " + this.userAction;
 
-		//DraUILayerObject
+		//Draw transLogStash for each dancer
 		
 
 
@@ -354,8 +364,17 @@ function ViewController(frameCount, objects, containerView){
 		this.updateUI();//update the UI to show new actions created
 	}.bind(this);
 
+	this.clearFrame = function(){
+		if (this.focusedObj){
+				
+				this.focusedObj.owner.clearFrameAt(this.currentFrame);
+				this.loadFrame();
+				this.updateUI();
+			}
+	}.bind(this);
+
 	containerView.onKeyDown = function(event){
-		// console.log(event.key + 'pressed');
+		
 		switch(event.key){
 			case 'g':
 				this.setAction('position');
@@ -365,7 +384,6 @@ function ViewController(frameCount, objects, containerView){
 				break;
 			case 'space':
 				this.logFrame(); 
-				this.setFrame(this.currentFrame+1);
 				break;
 			case 'f':
 				this.setFrame(this.currentFrame+1);
@@ -373,9 +391,59 @@ function ViewController(frameCount, objects, containerView){
 			case 'e':
 				this.setFrame(this.currentFrame-1);
 				break;
+			case 'c':
+				this.clearFrame();
+				break;
 		}
 		
 	}.bind(this);
+
+	//Playback functions
+
+	this.getFrameFromTime = function(time){
+		time /= 1000; //Convert from miliseconds
+		var secsPerBeat = 60/this.BPM;
+
+		return time / secsPerBeat;
+
+	}.bind(this);
+
+	this.playStartTime = null;
+
+	// this.startPlayback = function() { //This only plays from beginning TODO
+	// 	this.playing = true;
+	// 	this.playStartTime = Date.now();
+	// }.bind(this);
+
+	// this.stopPlayback = function() {
+	// 	this.playing = false;
+		
+	// }.bind(this);
+
+	this.togglePlayback = function() {
+		this.playing = !this.playing;
+		this.playStartTime = Date.now();
+		
+	}.bind(this);
+
+	containerView.onFrame = function(event){
+		//If state is playing increment playhead by elapsed time
+		if (this.playing) {
+			
+			//get frame for that moment,
+			var thisFrame = this.getFrameFromTime(Date.now() - this.playStartTime);
+			
+ 	 		
+
+			if (thisFrame>this.FRAMECOUNT) this.togglePlayback(); //if frame is out of range, stop playback	
+			else {
+				this.loadFrame(thisFrame);
+				this.setFrame(Math.floor(thisFrame));
+			}
+			
+		}
+		
+	}.bind(this)
 
 	containerView.onMouseMove = function(event){
 		switch (this.userAction){
@@ -391,24 +459,7 @@ function ViewController(frameCount, objects, containerView){
 
 }
 
-
-/*
-Dancer = {
-	contents = {
-		foot_left: {
-			rep: new Path.Rect....,
-			owner: (dancer OB)
-			mirror: (other foot)
-			
-		foot_right: new Path.Rect....,
-		weight: new Path.Rect...
-	}
-
-	
-	actionLog
-}
-
-*/
+//Dancer Class
 var HIP_WIDTH = 30;
 var FOOT_DIMENSIONS = [20,60];
 var FOOT_REP = new Path.Rectangle({
@@ -476,17 +527,20 @@ function Dancer(startPos, facing/*unImplemented TODO*/) {
 		return (frameNum in this.frameLib);
 	}
 
-	this.becomeFrame = function(dataFrame){
+	this.clearFrameAt = function (frameNum) {
+		delete this.frameLib[frameNum];
+	}
+
+	this.becomeFrame = function(dataFrame){ //Sort out become frame and load frame confusing naming...
 		this.contents.forEach(function(part) {
 				var thisEntry = dataFrame[part.name];
 				
-				console.log(thisEntry.rotation)
-				// console.log(thisEntry);
-				// part.position = thisEntry.position;
+				
+				
+				part.position = thisEntry.position;
 				part.rotation = thisEntry.rotation;
-				// console.log(this.transLogStash);
-				// this.transLogStash = this.frameLib[frameNum].transLog; 
-				// console.log(this.transLogStash);
+				
+				//Figure out what to do with translog stash for interpolated frames, kind of a UX issue TODO
 
 			}.bind(this))
 	}.bind(this);
@@ -570,7 +624,7 @@ function Interpolater() { //Start out with simple linear, later instantiate othe
 	//TODO would like to be able to return a frame with no translogStash so we need some error handling around that
 	//otherwise we have to keep sending blank translogs back which seems like a waste of memory, especially while animating.
 	this.interpolate = function (startFrame, endFrame, progress){
-		console.log('interpolater interpolating')
+		// console.log('interpolater interpolating')
 		var resultFrame = blankFrame();
 
 		for (item in startFrame){
@@ -581,10 +635,10 @@ function Interpolater() { //Start out with simple linear, later instantiate othe
 
 		for (item in startFrame){
 			for (prop in startFrame[item]){
-				resultFrame[item][prop] *= progress;
+				resultFrame[item][prop] = startFrame[item][prop] + resultFrame[item][prop] * progress;
 			}
 		}
-		console.log(resultFrame);
+		
 		return resultFrame;
 		
 	}
