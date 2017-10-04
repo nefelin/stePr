@@ -422,7 +422,7 @@ var WEIGHT_REP = new Path.Circle({
 	fillColor: 'red'
 })
 
-function Dancer(startPos, startingYaw/*unImplemented TODO*/) {
+function Dancer(startPos, facing/*unImplemented TODO*/) {
 
 	//create Objects
 	this.left = FOOT_REP.clone();
@@ -476,8 +476,25 @@ function Dancer(startPos, startingYaw/*unImplemented TODO*/) {
 		return (frameNum in this.frameLib);
 	}
 
-	this.loadFrame = function (frameNum){
+	this.becomeFrame = function(dataFrame){
+		this.contents.forEach(function(part) {
+				var thisEntry = dataFrame[part.name];
+				
+				console.log(thisEntry.rotation)
+				// console.log(thisEntry);
+				// part.position = thisEntry.position;
+				part.rotation = thisEntry.rotation;
+				// console.log(this.transLogStash);
+				// this.transLogStash = this.frameLib[frameNum].transLog; 
+				// console.log(this.transLogStash);
+
+			}.bind(this))
+	}.bind(this);
+
+	this.loadFrame = function (frameNum){ //This is ambiguous
+
 		if (frameNum in this.frameLib) {
+			// console.log('dancer found frame data, loading');
 			this.contents.forEach(function(part) {
 				var thisEntry = this.frameLib[frameNum][part.name];
 				
@@ -485,26 +502,95 @@ function Dancer(startPos, startingYaw/*unImplemented TODO*/) {
 				part.position = thisEntry.position;
 				part.rotation = thisEntry.rotation;
 				// console.log(this.transLogStash);
-				this.transLogStash = this.frameLib[frameNum].transLog;
+				this.transLogStash = this.frameLib[frameNum].transLog; 
 				// console.log(this.transLogStash);
 
 			}.bind(this))
 
 		}
+		else {
+			// console.log('dancer found no data, interpolating');
+			var lastFrame = this.frameBefore(frameNum);
+			var nextFrame = this.frameAfter(frameNum);
+			// console.log(lastFrame);
+			// console.log(nextFrame); 
+
+			if (lastFrame && nextFrame){
+				// console.log('frame boundries found so interpolation can proceed');
+				var progress = frameNum/nextFrame.frameNum;
+				var tweenFrame = linearIntrpl.interpolate(lastFrame.frame,nextFrame.frame, progress);
+				this.becomeFrame(tweenFrame);
+			}
+		}
 	}.bind(this)
+
+	this.frameAfter = function (frameNum){
+		var nextFrame = null; 
+		for (num in this.frameLib){
+			if (num > frameNum){
+				if (!nextFrame) nextFrame = num; //If this is the first number we find, that's our next frame
+				if (num < nextFrame) nextFrame = num; //If this number is lower than current find, that's our nextFrame;
+			}
+		}
+		return nextFrame ? {frameNum: nextFrame, frame: this.frameLib[nextFrame]} : null; //Return the next frame from our lib if we found it, else null
+	}.bind(this);
+
+	this.frameBefore = function (frameNum){
+		var prevFrame = null; 
+		for (num in this.frameLib){
+			if (num < frameNum){
+				if (!prevFrame) prevFrame = num; //If this is the first number we find, that's our next frame
+				if (num > prevFrame) prevFrame = num; //If this number is higher than current find, that's our prevFrame;
+			}
+		}
+		return prevFrame ? {frameNum: prevFrame, frame: this.frameLib[prevFrame]} : null; //Return the next frame from our lib if we found it, else null
+	}.bind(this);
+
 
 	this.blankFrameAt = function (frameNum){
 		if (!(frameNum in this.frameLib)){
-			this.frameLib[frameNum] = {
-				transLog: {}, //is this ok or should it have categories prepped? QUESTION TODO
-				left: {},
-				right: {},
-				weight: {}
-			}
+			this.frameLib[frameNum] = blankFrame();
 		}
 	}
 }
 
+//TODO should classify transLog and frame so that I don't have to maintain coherence in so many locations IMPORTANT
+
+var blankFrame = function() {
+	return {
+				transLog: {}, //is this ok or should it have categories prepped? QUESTION TODO
+				left: {},
+				right: {},
+				weight: {}
+			};
+} 
+
+
+function Interpolater() { //Start out with simple linear, later instantiate other stype of interpolater
+	//TODO would like to be able to return a frame with no translogStash so we need some error handling around that
+	//otherwise we have to keep sending blank translogs back which seems like a waste of memory, especially while animating.
+	this.interpolate = function (startFrame, endFrame, progress){
+		console.log('interpolater interpolating')
+		var resultFrame = blankFrame();
+
+		for (item in startFrame){
+			for (prop in startFrame[item]){
+				resultFrame[item][prop] = endFrame[item][prop] - startFrame[item][prop];
+			}
+		}
+
+		for (item in startFrame){
+			for (prop in startFrame[item]){
+				resultFrame[item][prop] *= progress;
+			}
+		}
+		console.log(resultFrame);
+		return resultFrame;
+		
+	}
+}
+
+var linearIntrpl = new Interpolater(); //Not sure this is the right model, maybe should have functions built in for different eases and we pick one...
 
 
 
@@ -541,103 +627,9 @@ function Button(rect, color, text, clickAction){
 
 
 
-//Proto Foot Class to allow pitch shading to indicate footsteps, still need to figure out how to hand when rotated out of cardinal directions...
-var FOOT_HEIGHT = 60;
-var FOOT_WIDTH = 20
-
-function Foot(position){ //FOOT class needs to extend paper.item otherwise it can't interact with environment with correctly TODO TODO TODO BUG
-
-	var startPos = typeof position == 'undefined' ? view.center : position;
-	this.pitch = 0;
-	this.position = null;
-
-	this.shadowRep = new paper.Path.Rectangle(view.center, [FOOT_WIDTH,FOOT_HEIGHT])
-	this.shadowRep.position = startPos; //no need to keep class position as we can just return one of the element's xy's same goes for yaw, since pitch is not maintained by paperjs we need our own.
-	this.shadowRep.applyMatrix = false; //Only have to do this once since all members are clones of shadowRep
-
-	this.footRep = this.shadowRep.clone();
-	this.shadowRep.opacity = .2;
-
-	this.shadowRep.fillColor = 'grey';
-	this.footRep.fillColor = 'black';
-
-	this.footMask = this.footRep.clone();
-
-	var footGroup = new Group(this.footMask,this.footRep);
-	footGroup.clipped = true;
-
-	Object.defineProperty(this, 'position', {
-	get: function() {
-		return this.shadowRep.selected;
-	},
-	set: function(value) {
-		this.shadowRep.selected = value;
-		console.log('foot selected');
-	}
-});
-
-
-//Getter/Setter Methods
-
-Object.defineProperty(this, 'onMouseEnter', {
-	get: function() {
-		return this.footGroup.onMouseEnter;
-	},
-	set: function(value) {
-		this.footGroup.onMouseEnter = value;
-	}
-});
-
-Object.defineProperty(this, 'position', {
-	get: function() {
-		return this.footRep.position;
-	},
-	set: function(value) {
-		console.log('setting foot position')
-		this.footRep.position = value;
-		this.shadowRep.position = value;
-		this.footMask.position = value;
-	}
-});
-
-Object.defineProperty(this, 'pitch', {
-	get: function() {
-		return this.footRep.rotation;
-	},
-	set: function(value) {
-		this.footRep.rotation = value;
-		this.shadowRep.rotation = value;
-		this.footMask.rotation = value;
-	}
-});
-
-Object.defineProperty(this, 'yaw', { //The problem is with these setters every time we set the position the yaw will be reset BUG TODO have to resovle
-	get: function() {
-		return this.yaw;
-	},
-	set: function(value) {
-		this.pitch = value;
-		if (this.pitch == 0) {//Mostly feet will be flat
-			this.footMask.position = this.footRep.position;
-		}
-		else {
-			var offset = FOOT_HEIGHT/90 //takes away one pixel of shoe for degree of rotation, I think... TODO
-			var dirVec = new Point(0, 1);
-
-			dirVec.angle += this.shadowRep.rotation+180;
-
-			footMask.position = this.footRep.position + dirVec
-
-		}
-
-
-	}
-});
-
-}
-
 //Create View	
 var mainView = new ViewController(50, null, view);
+
 
 
 
