@@ -1,4 +1,4 @@
-// //FrameLib stuff
+// //frameLib stuff
 
 
 // function Action(type, amount, target){
@@ -24,9 +24,6 @@
 // }
 
 
-// function FrameLib(){
-// 	this.frames = {};
-// }
 
 //View CLASS Should contain objects, track/set frame number, facilitating animation
 //Not sure where to keep key frame data, with dancer or individual objects
@@ -59,19 +56,29 @@ var UICOLORS = {
 	frameStrokeUnSelected : 'black'
 }
 
+
+
 function ViewController(frameCount, objects, containerView){
+	//Play Control Variables
+	this.playing = false;
+
+	this.BPM = 80; //This controls the resolution of the frames, each frame is a beat. So 60 / BMP = length of each frame in seconds.
+
+	//UI Control Groups
 	this.UIGroupHUD = new Group();
 	this.UIGroupActionLog = new Group();
 
 	//Vars for recording individual translations
 	this.obStartState = null; //Used to track object change
-	this.actionLog = {}; //Holds current translations until they are logged to a keyframe
 	this.actionLogUI = [];
 
+	this.dancers = [];
+	
 	this.focusedObj = null;
 	this.userAction = 'none';
 
 	this.FRAMECOUNT = typeof frameCount == 'undefined' ? 20 : frameCount;
+	this.frameLib = {};
 
 
 	// this.objects = typeof objects == 'undefined' ? [] : objects //Why doesn't this work here as above?
@@ -82,28 +89,29 @@ function ViewController(frameCount, objects, containerView){
 	this.currentFrame = 0; 
 	this.uiFrameBoxes = [];
 
-	//Init FrameLib
-	this.frameLib = {};
+	this.addDancer = function(newDancer){ //When new dancers are added throw them on the array and register each of their objects for handling
+		this.dancers.push(newDancer);
+		for (var i in newDancer.wholeBody.children){
+			this.registerForHandling(newDancer.wholeBody.children[i]);
+		}
+	}.bind(this)
 
-	this.addObj = function(obToAdd){
+	
+
+	this.registerForHandling = function(obToAdd){
 		
-		obToAdd.applyMatrix = false; //TODO It's important that all objects in view don't apply matrix but we'll handly this in object design rather than having the view enforce it
 
 		//Add event handlers for object focus
 		obToAdd.onMouseEnter = function(event) {
-			if (this.focusedObj) this.focusedObj.selected = false;
-			this.focusedObj = obToAdd;			
-			obToAdd.selected = true;
+			if (this.userAction=='none'){
+				if (this.focusedObj) this.focusedObj.selected = false; //If there was another object with focus, remove its border
 
+				this.focusedObj = obToAdd; //Change focusedObJ point to currently moused obj
+				obToAdd.selected = true;	//Add a border
+				
+			}
+		
 		}.bind(this);
-
-		this.objects.push(obToAdd); //Add object to contents list
-
-		// obToAdd.onMouseLeave = function(event) {
-		// 	this.focusedObj = null;
-		// 	obToAdd.selected = false;
-
-		// }.bind(this);
 
 	}.bind(this);
 
@@ -111,64 +119,63 @@ function ViewController(frameCount, objects, containerView){
 		
 		if ((frameNum < 0) || (frameNum >= this.FRAMECOUNT)) return -1;
 		this.currentFrame = frameNum;
-		this.loadFrame();
+		
 		this.updateUI();
 		
 	}.bind(this);
 
-	this.logFrame = function(){
+	this.logFrame = function(){ 
+		var that = this; //avoid binding this on each foreach loop
+
 		if (this.userAction != 'none'){
-			this.endAction();
+			this.endAction(); //Log changes if user is acting
 		}
 
-		// if (!(this.currentFrame in this.frameLib)){ //If there's no keyframe make a new blank. 
-		if (!(this.currentFrame in this.frameLib)){
-			this.frameLib[this.currentFrame] = {}
-		}
+		this.dancers.forEach(function(dancer){ //This should be contained in the dancer class TODO
+			
+			dancer.blankFrameAt(that.currentFrame); //Guarantees us a blank frame
+			
+			dancer.wholeBody.children.forEach(function(rep){
+				var thisEntry = dancer.frameLib[that.currentFrame][rep.name];
 
-		for (objI in this.objects){
-			this.frameLib[this.currentFrame][this.objects[objI].id] = {}
-			var thisEntry = this.frameLib[this.currentFrame][this.objects[objI].id];
-			var thisObject = this.objects[objI];
+				thisEntry.position = rep.position;
+				thisEntry.rotation = rep.rotation;
 
-			thisEntry.position = thisObject.position;
-			thisEntry.rotation =  thisObject.rotation;
+				
+				
 
-			thisEntry.actionLog = this.actionLog;
+			});
+			dancer.frameLib[that.currentFrame].transLog = JSON.parse(JSON.stringify(dancer.transLogStash)); //Needed to deep clone object
+			// console.log(dancer.transLogStash);
+			// console.log(dancer.frameLib);
 
-		}
+		});
+
+
 		this.updateUI();//make sure frames show new content
 
 	}.bind(this);
 
-	this.loadFrame = function(){
-		this.actionLog = {}; //Start fresh
+	this.logTranslation = function(stateDiff) {
+		this.focusedObj.owner.logTranslation(this.focusedObj.name, this.userAction, stateDiff);
+		// this.focusedObj.owner.transLogStash[this.focusedObj.name][this.userAction] = stateDiff;
+	}.bind(this);
 
-		if (this.currentFrame in this.frameLib){ //This should be abstracted more clearly TODO each object's position and actionlog should be in the same Object
-			for (obIndex in this.objects){
-				var thisOb = this.objects[obIndex];
-				var thisEntry = this.frameLib[this.currentFrame][thisOb.id];
+	this.loadFrame = function(frameNum){
 
+		this.dancers.forEach(function(dancer){ //each dancer loads their own frame info
 
-				thisOb.position = thisEntry.position; //Would be nice to set this to a function rather than recording each property
-				thisOb.rotation = thisEntry.rotation;	  //so that if we add or remove properties they can be stored or loaded programattically
+			dancer.initTransLogStash(); //Start with black transLog
+			dancer.loadFrame(frameNum); //Really this should be like dancer.loadMoment that calls a loadFram if loadFrame exists.... TODO
 
-				this.actionLog = thisEntry.actionLog;
-				// console.log("Setting object #: " + thisOb.id + " to position: " + thisEntry.position + "\nSetting rotation to: " + thisEntry.rotation);
-			}
-		}
-		else {
-			
-		}//Interpolate
+		}.bind(this));
 
-
-		 // console.log(this.frameLib);
 	}.bind(this);
 
 	this.initUI = function(){
 		//Buttons
 		var buttonRect = new Rectangle(view.center,[100,40])
-		var button1 = new Button(buttonRect, 'blue', 'Play', function(){alert('Will run animation')});
+		var button1 = new Button(buttonRect, 'blue', 'Play', function(){this.togglePlayback();}.bind(this));
 
 		var button2 = new Button(buttonRect, 'red', 'log', function(event){this.logFrame();});
 		button1.position = [60,30] //TODO (location should be set in constructor maybe change the rect parameter)
@@ -199,6 +206,7 @@ function ViewController(frameCount, objects, containerView){
 				// alert(ind);
 				whichframe.onClick = function(event){
 					controller.setFrame(ind);
+					controller.loadFrame(ind);
 				}
 			})(i, frame, this);
 
@@ -222,73 +230,70 @@ function ViewController(frameCount, objects, containerView){
 			if (i == this.currentFrame) this.uiFrameBoxes[i].strokeColor = UICOLORS.frameStrokeSelected;
 			else this.uiFrameBoxes[i].strokeColor = UICOLORS.frameStrokeUnSelected;
 
-			if (i in this.frameLib){
-					this.uiFrameBoxes[i].fillColor = 'black';	
-				}
-				else {
-					this.uiFrameBoxes[i].fillColor = 'grey';
-				}
+
+			this.dancers.forEach(function (dancer) { //Check if anyone has content for frame and determine coloring...
+				if (dancer.hasFrameAt(i)){
+						this.uiFrameBoxes[i].fillColor = 'black';	
+					}
+					else {
+						this.uiFrameBoxes[i].fillColor = 'grey';
+					}
+			}.bind(this))
+			
 		};
 
 		this.frameText.content = 'Frame #: ' + this.currentFrame + "\nAction: " + this.userAction;
 
-		//DraUILayerObject
+		//Draw transLogStash for each dancer
 		
 
 
 		//Feel like maybe this should be in it's own function.
 		//Or that they're should be an addTranslation, delTranslation, or something equivalent. 
 		//Then that drawing could be separate?
-		this.UIGroupActionLog.removeChildren()
 
-		var itemCount = 0;
-		for (key in this.actionLog) {
+		
+		// this.UIGroupActionLog.removeChildren()
 
-			itemCount++;
-			switch (key){
-				case 'position': //make boxes for 
-					var logItemRep = UISYMBOLS.ACT_MOVE.clone();
-					break;
-				case 'rotation':
-					var logItemRep = UISYMBOLS.ACT_ROTATE.clone();
-					break;
-			}
+		// var itemCount = 0;
 
-			(function(thisKey, thisItem, thisLog, thisView) {
-				logItemRep.onClick = function(){
-					
-					thisView.focusedObj[thisKey] += thisLog[thisKey]; //Undo the translation
+		//  this.dancers.forEach(function(dancer){ // TODO BUG a little broken and not the priority as I would rather implement a different display anyways
+		//  	for (var limb in dancer.transLogStash) {
+		//  		for (var trans in dancer.transLogStash[limb]) {
+		// 			switch (trans){
+		// 				case 'position': //make boxes for 
+		// 					var logItemRep = UISYMBOLS.ACT_MOVE.clone();
+		// 					break;
+		// 				case 'rotation':
+		// 					var logItemRep = UISYMBOLS.ACT_ROTATE.clone();
+		// 					break;
+		// 			}
 
-					thisItem.remove(); // Remove UI Element
+		// 			(function(thisKey, thisItem, thisLog, thisView) {
+		// 				logItemRep.onClick = function(){
+							
+		// 					thisView.focusedObj[thisKey] += thisLog[thisKey]; //Undo the translation
 
-					delete thisLog[thisKey]; //Remove Log Entry QUESTION: What's the difference between [] and .blahblah?
+		// 					thisItem.remove(); // Remove UI Element
 
-					// console.log(thisLog);
+		// 					delete thisLog[thisKey]; //Remove Log Entry QUESTION: What's the difference between [] and .blahblah?
 
-					thisView.updateUI(); //Update View
-				}
+		// 					// console.log(thisLog);
 
-			;})(key, logItemRep, this.actionLog, this);
+		// 					thisView.updateUI(); //Update View
+		// 				}
+
+		// 			;})(trans, logItemRep, dancer.transLogStash, this);
 
 
-			// (function(item, thisKey, log) {
-			// 	logItemRep.onClick = function(){
-			// 		console.log('transform click');
-			// 		console.log(log.thisKey);
-			// 		// item[thisKey] -= log.thisKey; //reverse movement on object, 
+		// 			logItemRep.position = [view.bounds.width-200,100+itemCount*20];
+		// 			// this.UIGroupActionLog.addChild(logItemRep);
 
-			// 		delete log.thisKey;//delete key
+		//  		}
+		//  	}
 
-					
-			// 		logItemRep.remove();//delete rep
-			// 	}
-
-			// }.bind(this))(logItemRep, key, this.actionLog)
-
-			logItemRep.position = [view.bounds.width-200,100+itemCount*20];
-			this.UIGroupActionLog.addChild(logItemRep);
-
-		}
+		//  })
+		
 
 
 		// console.log("active: " + project.activeLayer);
@@ -318,7 +323,7 @@ function ViewController(frameCount, objects, containerView){
 	}.bind(this);
 
 	this.startAction = function(actType){
-
+		
 		switch (actType){//record targets current state (only for relevant action)
 						 //*** This should not be necessary, should just log absolute positions 
 						 //and base changes off of that. Otherwise we're dealing with change from last move
@@ -342,24 +347,34 @@ function ViewController(frameCount, objects, containerView){
 		switch (this.userAction){//Note difference between last position and this position (or rotation or pitch or whatever)
 			case 'position':
 				var stateDiff = this.obStartState - this.focusedObj.position;
+				
 				break;
 			case 'rotation':
 				var stateDiff = this.obStartState - this.focusedObj.rotation;
+				
 				break;
 			case 'pitch':
 				var stateDiff = this.obStartState - this.focusedObj.pitch;
+
 				break;
 		}
 		
-		this.actionLog[this.userAction] = stateDiff;//Record Difference record movement in the actionLog for this frame, which will be added (plus absolute positions) to the framelib object IF the frame gets logged
-		// console.log(this.actionLog);
-		
+		this.logTranslation(stateDiff);
 
 		this.updateUI();//update the UI to show new actions created
 	}.bind(this);
 
+	this.clearFrame = function(){
+		if (this.focusedObj){
+				
+				this.focusedObj.owner.clearFrameAt(this.currentFrame);
+				this.loadFrame();
+				this.updateUI();
+			}
+	}.bind(this);
+
 	containerView.onKeyDown = function(event){
-		// console.log(event.key + 'pressed');
+		
 		switch(event.key){
 			case 'g':
 				this.setAction('position');
@@ -369,7 +384,6 @@ function ViewController(frameCount, objects, containerView){
 				break;
 			case 'space':
 				this.logFrame(); 
-				this.setFrame(this.currentFrame+1);
 				break;
 			case 'f':
 				this.setFrame(this.currentFrame+1);
@@ -377,9 +391,59 @@ function ViewController(frameCount, objects, containerView){
 			case 'e':
 				this.setFrame(this.currentFrame-1);
 				break;
+			case 'c':
+				this.clearFrame();
+				break;
 		}
 		
 	}.bind(this);
+
+	//Playback functions
+
+	this.getFrameFromTime = function(time){
+		time /= 1000; //Convert from miliseconds
+		var secsPerBeat = 60/this.BPM;
+
+		return time / secsPerBeat;
+
+	}.bind(this);
+
+	this.playStartTime = null;
+
+	// this.startPlayback = function() { //This only plays from beginning TODO
+	// 	this.playing = true;
+	// 	this.playStartTime = Date.now();
+	// }.bind(this);
+
+	// this.stopPlayback = function() {
+	// 	this.playing = false;
+		
+	// }.bind(this);
+
+	this.togglePlayback = function() {
+		this.playing = !this.playing;
+		this.playStartTime = Date.now();
+		
+	}.bind(this);
+
+	containerView.onFrame = function(event){
+		//If state is playing increment playhead by elapsed time
+		if (this.playing) {
+			
+			//get frame for that moment,
+			var thisFrame = this.getFrameFromTime(Date.now() - this.playStartTime);
+			
+ 	 		
+
+			if (thisFrame>this.FRAMECOUNT) this.togglePlayback(); //if frame is out of range, stop playback	
+			else {
+				this.loadFrame(thisFrame);
+				this.setFrame(Math.floor(thisFrame));
+			}
+			
+		}
+		
+	}.bind(this)
 
 	containerView.onMouseMove = function(event){
 		switch (this.userAction){
@@ -395,6 +459,192 @@ function ViewController(frameCount, objects, containerView){
 
 }
 
+//Dancer Class
+var HIP_WIDTH = 30;
+var FOOT_DIMENSIONS = [20,60];
+var FOOT_REP = new Path.Rectangle({
+	point:[-100,-100],
+	size:FOOT_DIMENSIONS,
+	fillColor:'black'
+});
+var WEIGHT_REP = new Path.Circle({
+	center: [-100,-100],
+	radius:5,
+	fillColor: 'red'
+})
+
+function Dancer(startPos, facing/*unImplemented TODO*/) {
+
+	//create Objects
+	this.left = FOOT_REP.clone();
+	this.right = FOOT_REP.clone();
+
+	this.weight = WEIGHT_REP.clone();
+	this.wholeBody =  new Group(this.left, this.right,this.weight);
+
+	this.wholeBody.applyMatrix = false; 
+
+	this.contents = [this.left,this.right,this.weight/*,this.wholeBody shoould switch to use this instead of wholeBody.children I think TODO*/];
+
+
+	
+	//need to add more custom pointers for owner weight? wholeBody. 
+	//how do I handle weight management TODO
+	this.wholeBody.children.forEach(function(el){
+		el.applyMatrix = false;
+		el.owner = this;
+	}.bind(this))
+
+	this.left.mirror = this.right;
+	this.right.mirror = this.left;
+	this.left.name = 'left';
+	this.right.name = 'right';
+	this.weight.name = 'weight';
+
+	this.left.position = startPos + [-.5*HIP_WIDTH,0];
+	this.right.position = startPos + [.5*HIP_WIDTH,0];
+	this.weight.position = this.left.position;
+
+	this.frameLib = {};
+	
+
+
+	this.initTransLogStash = function () {
+		this.transLogStash = {
+			left: {},
+			right: {},
+			weight: {},
+		}
+	
+	}.bind(this); //Ask Joe TODO
+	this.initTransLogStash();
+
+	this.logTranslation = function(target, type, amount) {
+		this.transLogStash[target][type] = amount;
+	}.bind(this)
+
+	this.hasFrameAt = function (frameNum) {
+		return (frameNum in this.frameLib);
+	}
+
+	this.clearFrameAt = function (frameNum) {
+		delete this.frameLib[frameNum];
+	}
+
+	this.becomeFrame = function(dataFrame){ //Sort out become frame and load frame confusing naming...
+		this.contents.forEach(function(part) {
+				var thisEntry = dataFrame[part.name];
+				
+				
+				
+				part.position = thisEntry.position;
+				part.rotation = thisEntry.rotation;
+				
+				//Figure out what to do with translog stash for interpolated frames, kind of a UX issue TODO
+
+			}.bind(this))
+	}.bind(this);
+
+	this.loadFrame = function (frameNum){ //This is ambiguous
+
+		if (frameNum in this.frameLib) {
+			// console.log('dancer found frame data, loading');
+			this.contents.forEach(function(part) {
+				var thisEntry = this.frameLib[frameNum][part.name];
+				
+				// console.log(thisEntry);
+				part.position = thisEntry.position;
+				part.rotation = thisEntry.rotation;
+				// console.log(this.transLogStash);
+				this.transLogStash = this.frameLib[frameNum].transLog; 
+				// console.log(this.transLogStash);
+
+			}.bind(this))
+
+		}
+		else {
+			// console.log('dancer found no data, interpolating');
+			var lastFrame = this.frameBefore(frameNum);
+			var nextFrame = this.frameAfter(frameNum);
+			// console.log(lastFrame);
+			// console.log(nextFrame); 
+
+			if (lastFrame && nextFrame){
+				// console.log('frame boundries found so interpolation can proceed');
+				var progress = frameNum/nextFrame.frameNum;
+				var tweenFrame = linearIntrpl.interpolate(lastFrame.frame,nextFrame.frame, progress);
+				this.becomeFrame(tweenFrame);
+			}
+		}
+	}.bind(this)
+
+	this.frameAfter = function (frameNum){
+		var nextFrame = null; 
+		for (num in this.frameLib){
+			if (num > frameNum){
+				if (!nextFrame) nextFrame = num; //If this is the first number we find, that's our next frame
+				if (num < nextFrame) nextFrame = num; //If this number is lower than current find, that's our nextFrame;
+			}
+		}
+		return nextFrame ? {frameNum: nextFrame, frame: this.frameLib[nextFrame]} : null; //Return the next frame from our lib if we found it, else null
+	}.bind(this);
+
+	this.frameBefore = function (frameNum){
+		var prevFrame = null; 
+		for (num in this.frameLib){
+			if (num < frameNum){
+				if (!prevFrame) prevFrame = num; //If this is the first number we find, that's our next frame
+				if (num > prevFrame) prevFrame = num; //If this number is higher than current find, that's our prevFrame;
+			}
+		}
+		return prevFrame ? {frameNum: prevFrame, frame: this.frameLib[prevFrame]} : null; //Return the next frame from our lib if we found it, else null
+	}.bind(this);
+
+
+	this.blankFrameAt = function (frameNum){
+		if (!(frameNum in this.frameLib)){
+			this.frameLib[frameNum] = blankFrame();
+		}
+	}
+}
+
+//TODO should classify transLog and frame so that I don't have to maintain coherence in so many locations IMPORTANT
+
+var blankFrame = function() {
+	return {
+				transLog: {}, //is this ok or should it have categories prepped? QUESTION TODO
+				left: {},
+				right: {},
+				weight: {}
+			};
+} 
+
+
+function Interpolater() { //Start out with simple linear, later instantiate other stype of interpolater
+	//TODO would like to be able to return a frame with no translogStash so we need some error handling around that
+	//otherwise we have to keep sending blank translogs back which seems like a waste of memory, especially while animating.
+	this.interpolate = function (startFrame, endFrame, progress){
+		// console.log('interpolater interpolating')
+		var resultFrame = blankFrame();
+
+		for (item in startFrame){
+			for (prop in startFrame[item]){
+				resultFrame[item][prop] = endFrame[item][prop] - startFrame[item][prop];
+			}
+		}
+
+		for (item in startFrame){
+			for (prop in startFrame[item]){
+				resultFrame[item][prop] = startFrame[item][prop] + resultFrame[item][prop] * progress;
+			}
+		}
+		
+		return resultFrame;
+		
+	}
+}
+
+var linearIntrpl = new Interpolater(); //Not sure this is the right model, maybe should have functions built in for different eases and we pick one...
 
 
 
@@ -422,158 +672,12 @@ function Button(rect, color, text, clickAction){
 			return this.group.position;
 		},
 		set: function(value){
-			// console.log('setter');
+			
 			this.group.position = value;
 		}
 
 	});
 } //Button class to help with interface
-
-
-
-//Proto Foot Class to allow pitch shading to indicate footsteps, still need to figure out how to hand when rotated out of cardinal directions...
-var FOOT_HEIGHT = 60;
-var FOOT_WIDTH = 20
-
-function Foot(position){ //FOOT class needs to extend paper.item otherwise it can't interact with environment with correctly TODO TODO TODO BUG
-
-	var startPos = typeof position == 'undefined' ? view.center : position;
-	this.pitch = 0;
-	this.position = null;
-
-	this.shadowRep = new paper.Path.Rectangle(view.center, [FOOT_WIDTH,FOOT_HEIGHT])
-	this.shadowRep.position = startPos; //no need to keep class position as we can just return one of the element's xy's same goes for yaw, since pitch is not maintained by paperjs we need our own.
-	this.shadowRep.applyMatrix = false; //Only have to do this once since all members are clones of shadowRep
-
-	this.footRep = this.shadowRep.clone();
-	this.shadowRep.opacity = .2;
-
-	this.shadowRep.fillColor = 'grey';
-	this.footRep.fillColor = 'black';
-
-	this.footMask = this.footRep.clone();
-
-	var footGroup = new Group(this.footMask,this.footRep);
-	footGroup.clipped = true;
-
-	Object.defineProperty(this, 'position', {
-	get: function() {
-		return this.shadowRep.selected;
-	},
-	set: function(value) {
-		this.shadowRep.selected = value;
-		console.log('foot selected');
-	}
-});
-
-
-//Getter/Setter Methods
-
-Object.defineProperty(this, 'onMouseEnter', {
-	get: function() {
-		return this.footGroup.onMouseEnter;
-	},
-	set: function(value) {
-		this.footGroup.onMouseEnter = value;
-	}
-});
-
-Object.defineProperty(this, 'position', {
-	get: function() {
-		return this.footRep.position;
-	},
-	set: function(value) {
-		console.log('setting foot position')
-		this.footRep.position = value;
-		this.shadowRep.position = value;
-		this.footMask.position = value;
-	}
-});
-
-Object.defineProperty(this, 'pitch', {
-	get: function() {
-		return this.footRep.rotation;
-	},
-	set: function(value) {
-		this.footRep.rotation = value;
-		this.shadowRep.rotation = value;
-		this.footMask.rotation = value;
-	}
-});
-
-Object.defineProperty(this, 'yaw', { //The problem is with these setters every time we set the position the yaw will be reset BUG TODO have to resovle
-	get: function() {
-		return this.yaw;
-	},
-	set: function(value) {
-		this.pitch = value;
-		if (this.pitch == 0) {//Mostly feet will be flat
-			this.footMask.position = this.footRep.position;
-		}
-		else {
-			var offset = FOOT_HEIGHT/90 //takes away one pixel of shoe for degree of rotation, I think... TODO
-			var dirVec = new Point(0, 1);
-
-			dirVec.angle += this.shadowRep.rotation+180;
-
-			footMask.position = this.footRep.position + dirVec
-
-		}
-
-
-	}
-});
-
-}
-//Need function to set rotation center too! TODO check paper syntax on that....
-
-// Object.defineProperty(Foot.prototype, 'position', {
-// 	get: function() {
-// 		return this.footRep.position;
-// 	},
-// 	set: function(value) {
-// 		this.footRep.position = value;
-// 		this.shadowRep.position = value;
-// 		this.footMask.position = value;
-// 	}
-// });
-
-// Object.defineProperty(Foot.prototype, 'pitch', {
-// 	get: function() {
-// 		return this.footRep.rotation;
-// 	},
-// 	set: function(value) {
-// 		this.footRep.rotation = value;
-// 		this.shadowRep.rotation = value;
-// 		this.footMask.rotation = value;
-// 	}
-// });
-
-// Object.defineProperty(Foot.prototype, 'yaw', { //The problem is with these setters every time we set the position the yaw will be reset BUG TODO have to resovle
-// 	get: function() {
-// 		return this.yaw;
-// 	},
-// 	set: function(value) {
-// 		this.pitch = value;
-// 		if (this.pitch == 0) {//Mostly feet will be flat
-// 			this.footMask.position = this.footRep.position;
-// 		}
-// 		else {
-// 			var offset = FOOT_HEIGHT/90 //takes away one pixel of shoe for degree of rotation, I think... TODO
-// 			var dirVec = new Point(0, 1);
-
-// 			dirVec.angle += this.shadowRep.rotation+180;
-
-// 			footMask.position = this.footRep.position + dirVec
-
-// 		}
-
-
-// 	}
-// });
-
-
-
 
 
 
@@ -585,30 +689,21 @@ var mainView = new ViewController(50, null, view);
 
 
 
+
 //Create stuff to animate:
-var d1 = new Item();
+// var d1 = new Item();
 
 
-var obj1 = new paper.Path.Rectangle(view.center, [50,150])
-obj1.fillColor = 'black';
+// var obj1 = new paper.Path.Rectangle(view.center, [50,150])
+// obj1.fillColor = 'black';
 
-var obj2 = obj1.clone(); 
-obj2.position += [60,0];
+// var obj2 = obj1.clone(); 
+// obj2.position += [60,0];
 
+var d1 = new Dancer(view.center);
+d1.name = 'dude';
+mainView.addDancer(d1);
 
-
-// var testFoot = new Foot(); //OUT until we fix foot specific code TODO
-// mainView.addObj(testFoot);
-
-
-mainView.addObj(obj1);
-mainView.addObj(obj2);
-
-
-// onMouseMove = function(event){
-// 	obj1.position += event.delta;
-// }
-
-
-
+// mainView.registerForHandling(obj1);
+// mainView.registerForHandling(obj2);
 
