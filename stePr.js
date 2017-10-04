@@ -24,9 +24,6 @@
 // }
 
 
-// function FrameLib(){
-// 	this.frames = {};
-// }
 
 //View CLASS Should contain objects, track/set frame number, facilitating animation
 //Not sure where to keep key frame data, with dancer or individual objects
@@ -94,7 +91,7 @@ function ViewController(frameCount, objects, containerView){
 	}.bind(this)
 
 	this.registerForHandling = function(obToAdd){
-		// obToAdd.applyMatrix = false; //TODO It's important that all objects in view don't apply matrix but we'll handly this in object design rather than having the view enforce it
+		
 
 		//Add event handlers for object focus
 		obToAdd.onMouseEnter = function(event) {
@@ -103,7 +100,7 @@ function ViewController(frameCount, objects, containerView){
 
 				this.focusedObj = obToAdd; //Change focusedObJ point to currently moused obj
 				obToAdd.selected = true;	//Add a border
-				console.log(obToAdd.owner.name);
+				
 			}
 		
 		}.bind(this);
@@ -119,58 +116,51 @@ function ViewController(frameCount, objects, containerView){
 		
 	}.bind(this);
 
-	this.logFrame = function(){
+	this.logFrame = function(){ 
+		var that = this; //avoid binding this on each foreach loop
+
 		if (this.userAction != 'none'){
-			this.endAction();
+			this.endAction(); //Log changes if user is acting
 		}
 
-		// if (!(this.currentFrame in this.frameLib)){ //If there's no keyframe make a new blank. 
-		if (!(this.currentFrame in this.frameLib)){
-			this.frameLib[this.currentFrame] = {}
-		}
+		this.dancers.forEach(function(dancer){ //This should be contained in the dancer class TODO
+			
+			dancer.blankFrameAt(that.currentFrame); //Guarantees us a blank frame
+			
+			dancer.wholeBody.children.forEach(function(rep){
+				var thisEntry = dancer.frameLib[that.currentFrame][rep.name];
 
-		for (objI in this.objects){
-			this.frameLib[this.currentFrame][this.objects[objI].id] = {}
-			var thisEntry = this.frameLib[this.currentFrame][this.objects[objI].id];
-			var thisObject = this.objects[objI];
+				thisEntry.position = rep.position;
+				thisEntry.rotation = rep.rotation;
 
-			thisEntry.position = thisObject.position;
-			thisEntry.rotation =  thisObject.rotation;
+				
+				
 
-			thisEntry.actionLog = this.actionLog;
+			});
+			dancer.frameLib[that.currentFrame].transLog = JSON.parse(JSON.stringify(dancer.transLogStash)); //Needed to deep clone object
+			// console.log(dancer.transLogStash);
+			// console.log(dancer.frameLib);
 
-		}
+		});
+
+
 		this.updateUI();//make sure frames show new content
 
 	}.bind(this);
 
 	this.logTranslation = function(stateDiff) {
-		console.log(this.focusedObj.owner);
-		this.focusedObj.owner.transLogStash[this.focusedObj.name][this.userAction] = stateDiff;
+		this.focusedObj.owner.logTranslation(this.focusedObj.name, this.userAction, stateDiff);
+		// this.focusedObj.owner.transLogStash[this.focusedObj.name][this.userAction] = stateDiff;
 	}.bind(this);
 
 	this.loadFrame = function(){
-		this.actionLog = {}; //Start fresh
+		this.dancers.forEach(function(dancer){ //each dancer loads their own frame info
 
-		if (this.currentFrame in this.frameLib){ //This should be abstracted more clearly TODO each object's position and actionlog should be in the same Object
-			for (obIndex in this.objects){
-				var thisOb = this.objects[obIndex];
-				var thisEntry = this.frameLib[this.currentFrame][thisOb.id];
+			dancer.initTransLogStash(); //Start with black transLog
+			dancer.loadFrame(this.currentFrame); //Really this should be like dancer.loadMoment that calls a loadFram if loadFrame exists.... TODO
 
+		}.bind(this));
 
-				thisOb.position = thisEntry.position; //Would be nice to set this to a function rather than recording each property
-				thisOb.rotation = thisEntry.rotation;	  //so that if we add or remove properties they can be stored or loaded programattically
-
-				this.actionLog = thisEntry.actionLog;
-				// console.log("Setting object #: " + thisOb.id + " to position: " + thisEntry.position + "\nSetting rotation to: " + thisEntry.rotation);
-			}
-		}
-		else {
-			
-		}//Interpolate
-
-
-		 // console.log(this.frameLib);
 	}.bind(this);
 
 	this.initUI = function(){
@@ -230,12 +220,16 @@ function ViewController(frameCount, objects, containerView){
 			if (i == this.currentFrame) this.uiFrameBoxes[i].strokeColor = UICOLORS.frameStrokeSelected;
 			else this.uiFrameBoxes[i].strokeColor = UICOLORS.frameStrokeUnSelected;
 
-			if (i in this.frameLib){
-					this.uiFrameBoxes[i].fillColor = 'black';	
-				}
-				else {
-					this.uiFrameBoxes[i].fillColor = 'grey';
-				}
+
+			this.dancers.forEach(function (dancer) { //Check if anyone has content for frame and determine coloring...
+				if (dancer.hasFrameAt(i)){
+						this.uiFrameBoxes[i].fillColor = 'black';	
+					}
+					else {
+						this.uiFrameBoxes[i].fillColor = 'grey';
+					}
+			}.bind(this))
+			
 		};
 
 		this.frameText.content = 'Frame #: ' + this.currentFrame + "\nAction: " + this.userAction;
@@ -319,7 +313,7 @@ function ViewController(frameCount, objects, containerView){
 	}.bind(this);
 
 	this.startAction = function(actType){
-		console.log(this.focusedObj);
+		
 		switch (actType){//record targets current state (only for relevant action)
 						 //*** This should not be necessary, should just log absolute positions 
 						 //and base changes off of that. Otherwise we're dealing with change from last move
@@ -439,6 +433,8 @@ function Dancer(startPos, startingYaw/*unImplemented TODO*/) {
 
 	this.wholeBody.applyMatrix = false; 
 
+	this.contents = [this.left,this.right,this.weight/*,this.wholeBody shoould switch to use this instead of wholeBody.children I think TODO*/];
+
 
 	
 	//need to add more custom pointers for owner weight? wholeBody. 
@@ -459,10 +455,53 @@ function Dancer(startPos, startingYaw/*unImplemented TODO*/) {
 	this.weight.position = this.left.position;
 
 	this.frameLib = {};
-	this.transLogStash = {
-		left: {},
-		right: {},
-		weight: {}
+	
+
+
+	this.initTransLogStash = function () {
+		this.transLogStash = {
+			left: {},
+			right: {},
+			weight: {},
+		}
+	
+	}.bind(this); //Ask Joe TODO
+	this.initTransLogStash();
+
+	this.logTranslation = function(target, type, amount) {
+		this.transLogStash[target][type] = amount;
+	}.bind(this)
+
+	this.hasFrameAt = function (frameNum) {
+		return (frameNum in this.frameLib);
+	}
+
+	this.loadFrame = function (frameNum){
+		if (frameNum in this.frameLib) {
+			this.contents.forEach(function(part) {
+				var thisEntry = this.frameLib[frameNum][part.name];
+				
+				// console.log(thisEntry);
+				part.position = thisEntry.position;
+				part.rotation = thisEntry.rotation;
+				// console.log(this.transLogStash);
+				this.transLogStash = this.frameLib[frameNum].transLog;
+				// console.log(this.transLogStash);
+
+			}.bind(this))
+
+		}
+	}.bind(this)
+
+	this.blankFrameAt = function (frameNum){
+		if (!(frameNum in this.frameLib)){
+			this.frameLib[frameNum] = {
+				transLog: {}, //is this ok or should it have categories prepped? QUESTION TODO
+				left: {},
+				right: {},
+				weight: {}
+			}
+		}
 	}
 }
 
@@ -493,7 +532,7 @@ function Button(rect, color, text, clickAction){
 			return this.group.position;
 		},
 		set: function(value){
-			// console.log('setter');
+			
 			this.group.position = value;
 		}
 
